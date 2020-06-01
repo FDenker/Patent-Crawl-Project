@@ -1,4 +1,4 @@
-##Patent Crawl Project
+### Patent Crawl Project
 
 This project is the basis for two undergraduate paper on the usage of German utility models in contrast to German patents.
 There is also a [legacy repo for this project](https://github.com/FDenker/Legacy-patent-crawler) which uses rvest and RSelenium. Although the data collection precess was sucessfull I have decided to abondon the project due to potential problems using the data. 
@@ -20,7 +20,7 @@ It is the goal for the next few lines to give a short overview over the scripts:
 
 [ASR_Hausarbeit.Rmd](https://github.com/FDenker/Patent-Crawl-Project/blob/master/ASR_Hausarbeit.Rmd) - this script is the working version of the paper.
 
-#Test-scripts (these are not used for the paper itsself but for testing)
+## Test-scripts (these are not used for the paper itsself but for testing)
 
 [99_data_analysis.R](https://github.com/FDenker/Patent-Crawl-Project/blob/master/99_data_analysis.R)
 
