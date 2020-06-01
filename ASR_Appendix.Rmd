@@ -1,0 +1,256 @@
+---
+title: "Appendix Document"
+author: "Frederic Denker"
+date: "26 3 2020"
+output: html_document
+---
+# Appendix
+In order to create transparency in the face of limited reproducability, it is the goal of this chapter of the appendix to give a summary on how this data was collected.
+
+## Appendix 1: Data sourcing
+
+As described shortly in the paper, there are three main sources of data that are used: 
+* data on which US patents cited which German patents/utility models
+* data on these US patents
+* data on the German patents/utility models
+
+
+
+### Appendix 1A: Patent citation data
+
+This data can be found as part of the additional downloads on the USPTOs ["patentsview.org"](https://www.patentsview.org/download/) and has been updated recently (December 31, 2019). This data is then loaded into R, subsetted to only include citations of German Intellectual Property and saved for future processing. 
+```{r import_foreigncitations, eval=FALSE}
+#Importing the tsv file
+uspat_foreigncitiations <- as.data.table(fread("D:/foreigncitation.tsv"))
+#Subsetting
+uspat_foreigncitiations_ger <- uspat_foreigncitiations[country=="DE"]
+#Saving the file for future access
+saveRDS(uspat_foreigncitiations_ger, "data/uspat_foreigncitations_ger.rds")
+#Saving the US patent numbers for future queries
+unique_rds_patent_ids<- unique(uspat_foreigncitiations_ger$patent_id)
+
+uspat_foreigncitiations$uspto_fp_number_f_joining <- gsub("[A-Z]","", uspat_foreigncitiations$uspto_fp_number_for_query)
+
+
+saveRDS(unique_rds_patent_ids, "data/unique_rds_patent_ids.rds")
+```
+
+### Appendix 1B: US Patent Data
+
+Due to first table only having the US patent number, additional patent information needs to be queried seperatly. For this the [patentsview API](https://www.patentsview.org/api/query-language.html) and the corresponsing R package [patentsview](https://cran.r-project.org/web/packages/patentsview/index.html) is used.
+
+Due to the almost 1 million US patents that are given, the process of gathering information on these patents was split into groups of 200 queries which request information on 50 patents each.
+
+```{r query_patentsview, eval=FALSE}
+###Loading the correct packages###
+require(patentsview)
+require(data.table)
+require(dplyr)
+
+### Reading the file in which all the numbers to query were saved ###
+
+unique_uspto_numbers <- readRDS("unique_rds_patent_ids.rds")
+
+### Creating a table in which the data will be written ###
+full_uspto_query_data <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
+                                  c("patent_number", "patent_year", "assignees",
+                                    "applications"))  
+
+### Setting the fields which need to be queried ###
+fields <- c("patent_number", "patent_year","app_date","app_country","assignee_country")
+
+### This for-loop repeats the for-loop which queries 200 times
+### This is done in order to keep the files to a reasonable size 
+### for the raspberry pi that runs this script to handle 
+
+for (group in 1:5){
+  print(Sys.time())
+  start <- (group*200)-199
+  end <- (group*200)
+  print(group)
+  
+  ### This for-loop contains the actual query ###
+  
+  for (i in start:end){
+    print(paste0(((i*50)-49),"-",(50*i)))
+    print(paste0("run ", i, " from ", start, "/" ,end))
+    
+    ### This creates the second part of the query ###
+    
+    query <- with_qfuns( # with_qfuns is basically just: with(qry_funs, ...)
+      and(contains(patent_number = as.character(unique_uspto_numbers[((i*50)-49):(50*i)]))
+      )
+      
+    )
+    
+    ### Send request to API's server with the right numbers and fields to query
+    print(system.time({pv_res<- search_pv(query = query, fields = fields,
+                                          all_pages = TRUE)} )) 
+    
+    
+    ### The query returns a list from which only one part is needed
+    
+    relevant_uspto_data_from_query <- pv_res[[1]][[1]]
+    
+    full_uspto_query_data <- rbind(full_uspto_query_data,relevant_uspto_data_from_query)
+    
+  }
+  ### saving the file for each group
+  saveRDS(full_uspto_query_data, file=paste0("uspto_query_data_group_",group,".rds"))
+  
+  
+}
+```
+
+
+### Appendix 1C: German patent data
+
+Additional information on the cited patents/utility models such as the application date and the kind of IP is needed for the analysis. For this the [Open Patent Services API](https://www.epo.org/searching-for-patents/data/web-services/ops.html#tab-1) of the European Patent Office is used. 
+
+Firstly, a character of strings is created
+
+
+```{r query_OPS, eval=FALSE}
+### First the necessary packages are loaded ###
+require(dplyr)
+require(readr) 
+require(remotes)
+require("base64")
+require(xml2)
+require(stringr)
+require(XML)
+require(data.table)
+require(tidyverse)
+require(httr)
+require(caTools)
+
+
+### This function generates the accesstoken that is needed for the main query ###
+
+auth<- function (key, secret) {
+  auth_enc <- base64encode(charToRaw(paste0(key, ':', secret)))
+  heads <- c(auth_enc, "application/x-www-form-urlencoded")
+  names(heads) <- c("Authorization", "content-type")
+  auth <- httr::POST(url = "https://ops.epo.org/3.2/auth/accesstoken", 
+                     httr::add_headers(heads), body = "grant_type=client_credentials")
+  print(auth$status)
+  content_auth<- content(auth, encoding = "UTF-8")
+  access_token <- content_auth$access_token
+  return(access_token)
+}
+
+### This is the query function itsself which requires a string as an input
+### It uses the token generated above to send a POST request to the server
+### This xml data is then parsed and the important information is extracted
+### 
+
+ops_query <- function(string_for_ops){
+  access_token<- auth("KEY_HERE", "SECRET_KEY_HERE")
+  
+  head_post <- c(paste("Bearer", access_token ),"application/exchange+xml", "text/plain")
+  names(head_post) <- c("Authorization", "Accept", "Content-Type" )
+  r_post<- POST("http://ops.epo.org/rest-services/published-data/publication/epodoc/biblio", 
+                add_headers(head_post), body = string_for_ops)
+  
+  print(paste0("Per hour used: ",r_post$headers$`x-individualquotaperhour-used`))
+  print(paste0("Per week used: ",r_post$headers$`x-registeredquotaperweek-used`))
+  
+  pat=xmlTreeParse(r_post) %>% xmlRoot() %>% .[[1]]
+  
+  df <- xmlSApply(pat, function(x) {
+    test <- x[["bibliographic-data"]][["publication-reference"]][["document-id"]]
+    xmlSApply(test, xmlValue)})
+  df <- t(df)
+  
+  content(r_post)
+  
+  return(df)
+}
+
+### This is the function that structures the queries in groups of 100
+### Within each query 80 patents are queried
+### This function requires that a group number is given which is then queried
+
+
+agg_ops_crawler <- function(group){
+  
+  ### This is the table in which the data will be written
+  
+  ops_data <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
+                       c("country", "int_pat_number", "kind_of_patent", "date"))
+  
+  ### This reads the file which earlier generated all the strings for query 
+  
+  ops_string_for_query <- readRDS("data/ops_string_for_query.rds")
+  
+  ## Creating start and ending points for the for-loop
+  
+  ops_start <- (group*100-99)
+  ops_end <- (group*100)
+  
+  print(paste0("Querying from ", ops_start, " to ", ops_end))
+  for (i in ops_start:ops_end){
+    print(i)
+    
+    tryCatch(
+      print(system.time(query_results<- ops_query(ops_string_for_query[i]))),
+      error = function(c) {
+        print("Error message")
+        Sys.sleep(10)
+        system.time(query_results<- ops_query(ops_string_for_query[i]))
+      },
+      warning = function(c) "warning")
+    
+    
+    n.obs <- sapply(query_results, length)
+    seq.max <- seq_len(max(n.obs))
+    new_data <- t(sapply(query_results, "[", i = seq.max))
+    colnames(new_data) <-  c("country", "int_pat_number", "kind_of_patent", "date")
+    ops_data<- rbind(ops_data,new_data, fill=TRUE)
+    
+  }
+  saveRDS(ops_data,file=paste0("data/ops_files/ops_data_group_",group,".rds"))
+  return(ops_data)
+}
+
+```
+
+```{r 3d_graphic}
+require(plotly)
+den3d <- readRDS("den3d_frederic.rds")
+
+names(den3d) <- c("US Patent Year", "German Patent Year", "Relative Density")
+
+fig <- plot_ly(x=den3d$`US Patent Year`, y=den3d$`German Patent Year`, z=den3d$`Relative Density`) %>% add_surface()
+fig <- fig %>% layout(
+  title = "Patent citations over time",
+  scene = list(
+    xaxis = list(title = "US Patent Year"),
+    yaxis = list(title = "German Patent Year"),
+    zaxis = list(title = "Density")
+  ))
+fig
+
+```
+
+
+
+```{r uspto_crawl_show table, echo=FALSE, eval=FALSE}
+#require(htmlwidgets)
+#require(DiagrammeR)
+#require(DiagrammeRsvg)
+#require(V8)
+#readRDS("data/uspat_foreigncitations_ger.rds")
+#dm_f <- dm_from_data_frames(uspat_foreigncitiations)
+#graph <- dm_create_graph(dm_f, rankdir = "BT", col_attr = c("column", "type"))
+#code <- dm_render_graph(graph)
+#filename <- "test.png"
+#
+#pdf_digraph <- function(filename, code){
+#  capture.output({
+#  g <- grViz(paste("digraph{", code, "}"))
+#  DiagrammeRsvg::export_svg(g) %>% charToRaw %>% rsvg::rsvg_pdf(filename)
+#  },  file='NUL')
+#  knitr::include_graphics(filename)
+#}
+```
