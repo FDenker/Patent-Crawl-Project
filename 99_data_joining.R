@@ -81,6 +81,9 @@ while ( file.exists(paste0("data/ops_files/ops_data_group_",i,".rds"))){
 #                      "uspto_sequence","uspto_fp_number_for_query","uspat_valid_pat_id_format",
 #                      "uspto_fp_number_f_joining","uspto_application_id","uspto_app_date") %>% saveRDS(file="data/uspto_join_slim.rds")
 
+
+## Here all the data is then loaded and joined
+## This function returns one data frame that is then used for the regression
 read_and_join_data <- function(){
   require(dplyr)
   require(tidyverse)
@@ -88,17 +91,21 @@ read_and_join_data <- function(){
   require(gtools)
   require(lubridate)
   require(magrittr)
+#reading the join of the first two data sources on US patents
 uspat_join <- readRDS("data/uspto_join_slim.rds")
-## here filter the ones you do not need
+# calling the OPS data reading function
 full_ops_query_data<-read_ops_query_files()
 full_ops_query_data$ops_date <- as.Date(full_ops_query_data$ops_date, format = "%Y%m%d")
+#Sometimes there are multiple patents associated with one patent number. It is not possible to know which patent is meant. 
+#Therefore this takes the mean of the date.
 full_ops_query_data %<>% 
   group_by(.$ops_int_pat_number,.$ops_kind_of_fp_coded ) %>% 
   summarise(mean_date_german_patent = mean.Date(ops_date, na.rm=TRUE))
 colnames(full_ops_query_data) <- c("ops_int_pat_number","ops_kind_of_fp_coded","mean_date_german_patent")
-
+#This joins the data sources together and then calculates the citation time difference
 complete_join_no_na <- inner_join(full_ops_query_data,uspat_join, by = c("ops_int_pat_number"="uspto_fp_number_f_joining"))
 complete_join_no_na$year_difference <- as.numeric(difftime(as.Date(complete_join_no_na$uspto_app_date), as.Date(complete_join_no_na$mean_date_german_patent), units = "days"))/365
+#This deletes all NAs and then adds a few columns that are used in further analysis
 complete_join_no_na <- complete_join_no_na[!is.na(complete_join_no_na$year_difference),]
 complete_join_no_na <- complete_join_no_na[!complete_join_no_na$ops_kind_of_fp_coded=="",]
 complete_join_no_na$year_us_patent <- year(as.Date(complete_join_no_na$uspto_app_date))
@@ -108,7 +115,6 @@ complete_join_no_na[complete_join_no_na$uspto_fp_category=="NULL","uspto_fp_cate
 complete_join_no_na$uspto_fp_category <- as.factor(complete_join_no_na$uspto_fp_category)
 complete_join_no_na$uspto_cited_by_examiner <- 0
 complete_join_no_na[which(complete_join_no_na$uspto_fp_category=="cited by examiner"),]$uspto_cited_by_examiner <- 1
-complete_join_no_na$adapted_year_uspto <- complete_join_no_na$year_us_patent - mean(complete_join_no_na$year_us_patent)
 return(complete_join_no_na)
 }
 
