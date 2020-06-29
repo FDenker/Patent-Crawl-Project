@@ -42,3 +42,7 @@ papers/
 *.png
 *.xlsx
 *.bib
+*.tex
+*.log
+ASR_Hausarbeit_cache/
+ASR_Hausarbeit_files/
