@@ -82,8 +82,6 @@ create_ops_strings_for_na_query <- function(){
 }
 
 
-#ops_string_for_na_query<- create_ops_strings_for_na_query()
-#View(ops_string_for_na_query)
 ### This function generates the accesstoken that is needed for the main query ###
 
 auth<- function (key, secret) {
@@ -101,7 +99,7 @@ auth<- function (key, secret) {
 ### This is the query function itsself which requires a string as an input
 ### It uses the token generated above to send a POST request to the server
 ### This xml data is then parsed and the important information is extracted
-### 
+
 
 ops_query_for_na <- function(string_for_ops){
   auth_codes <- readRDS("data/auth.rds")
@@ -120,66 +118,8 @@ ops_query_for_na <- function(string_for_ops){
   return(pat)
 }
 
-
-#agg_ops_na_crawler <- function(){
-  
-  ### This is the table in which the data will be written
-  
-  ops_na_data <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
-                       c("country", "int_pat_number", "kind_of_patent", "date"))
-  
-  ### This reads the file which earlier generated all the strings for query 
-  
-  ops_string_for_query <- create_ops_strings_for_na_query()
-  list_of_query_results <- vector(mode = "list")
-  
-  ## Creating start and ending points for the for-loop
-  
-  ops_start <- 1
-  ops_end <- 400
-  #ops_end <- length(ops_string_for_query) 
-  
-  print(paste0("Querying from ", ops_start, " to ", ops_end))
-  for (i in ops_start:ops_end){
-    print(i)
-    n <- 1+(i-ops_start)
-    tryCatch(
-      print(system.time(query_results<- ops_query_for_na(ops_string_for_query[i]))),
-      error = function(c) {
-        print(paste0("Error message in group",i))
-      },
-      warning = function(c) "warning")
-    
-    #list_of_query_results[[n]] <- xmlToList(query_results)
-    print(n)
-    
-    tryCatch(
-      {df <- xmlSApply(query_results, function(x) {
-        test <- x[["bibliographic-data"]][["publication-reference"]][["document-id"]]
-        xmlSApply(test, xmlValue)})
-      df <- t(df)}
-      ,
-      error = function(c) {
-        print(paste0("Error message in group",i))
-      },
-      warning = function(c) "warning")
-    
-    #df <- xmlSApply(query_results, function(x) {
-      #test <- x[["bibliographic-data"]][["publication-reference"]][["document-id"]]
-     # xmlSApply(test, xmlValue)})
-    n.obs <- sapply(df, length)
-    seq.max <- seq_len(max(n.obs))
-    new_data <- t(sapply(df, "[", i = seq.max))
-    colnames(new_data) <-  c("country", "int_pat_number", "kind_of_patent", "date")
-    ops_na_data<- rbind(ops_na_data,new_data, fill=TRUE)
-    
-  }
-  #list.save(list_of_query_results, file =paste0("data/ops_files/na_list_of_results_group_",ops_start,"__",ops_end,".rds") )
-  saveRDS(ops_na_data,file=paste0("data/ops_files/ops_na_data.rds"))
-  return(ops_na_data)
-}
-#
-
+#This is the very similar query to the aggregated OPS crawler
+# it just includes more failsafes through the trycatch function
 agg_ops_na_crawler_2 <- function(group){
   print(group)
   ### This is the table in which the data will be written
@@ -218,6 +158,7 @@ agg_ops_na_crawler_2 <- function(group){
         system.time(query_results<- ops_query_for_na(ops_string_for_query[i]))
       },
       warning = function(c) "warning")
+    #T
     tryCatch({
       list_of_query_results[[n]] <- xmlToList(query_results)
       print(n)

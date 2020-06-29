@@ -5,7 +5,9 @@ date: "26 3 2020"
 output: html_document
 ---
 # Appendix
-In order to create transparency in the face of limited reproducability, it is the goal of this chapter of the appendix to give a summary on how this data was collected.
+In order to create transparency in the face of limited reproducability, it is the goal of this chapter of the appendix to give a summary on how this data was collected. In the appendix the data sources and the joining will be explained. 
+
+The appendix 2 will further explain the steps made specifically in this paper.
 
 ## Appendix 1: Data sourcing
 
@@ -23,91 +25,50 @@ This data can be found as part of the additional downloads on the USPTOs ["paten
 #Importing the tsv file
 uspat_foreigncitiations <- as.data.table(fread("D:/foreigncitation.tsv"))
 #Subsetting
-uspat_foreigncitiations_ger <- uspat_foreigncitiations[country=="DE"]
+uspat_foreigncitiations <- uspat_foreigncitiations[country=="DE"]
 #Saving the file for future access
-saveRDS(uspat_foreigncitiations_ger, "data/uspat_foreigncitations_ger.rds")
-#Saving the US patent numbers for future queries
-unique_rds_patent_ids<- unique(uspat_foreigncitiations_ger$patent_id)
+saveRDS(uspat_foreigncitiations, "data/uspat_foreigncitations_ger.rds")
 
+#Clearing the data for the joining process
 uspat_foreigncitiations$uspto_fp_number_f_joining <- gsub("[A-Z]","", uspat_foreigncitiations$uspto_fp_number_for_query)
 
-
-saveRDS(unique_rds_patent_ids, "data/unique_rds_patent_ids.rds")
 ```
 
 ### Appendix 1B: US Patent Data
 
-Due to first table only having the US patent number, additional patent information needs to be queried seperatly. For this the [patentsview API](https://www.patentsview.org/api/query-language.html) and the corresponsing R package [patentsview](https://cran.r-project.org/web/packages/patentsview/index.html) is used.
+This data can also be found as part of the additional downloads on the USPTOs ["patentsview.org"](https://www.patentsview.org/download/). It is loaded, filtered, renamed and then joined with the already existing table.
 
-Due to the almost 1 million US patents that are given, the process of gathering information on these patents was split into groups of 200 queries which request information on 50 patents each.
+```{r import_application, eval=FALSE}
+#reading the dataset
+uspat_applications<- readRDS("data/uspat_applications.rds")
 
-```{r query_patentsview, eval=FALSE}
-###Loading the correct packages###
-require(patentsview)
-require(data.table)
-require(dplyr)
+#Filtering to only include reasonable dates as there was some faulty data before
+uspat_applications %<>%  filter(date >= as.Date("1800-01-05") & date <= as.Date("2023-01-10"))
 
-### Reading the file in which all the numbers to query were saved ###
+#renaming the table
+names(uspat_applications) <- c("uspto_application_id", "uspto_us_patent_id", "uspto_series_code", "uspto_number", "uspto_country", "uspto_app_date")
 
-unique_uspto_numbers <- readRDS("unique_rds_patent_ids.rds")
+#joining the two tables
+uspat_join <- inner_join(uspat_foreigncitiations, uspat_applications, by= "uspto_us_patent_id")
 
-### Creating a table in which the data will be written ###
-full_uspto_query_data <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
-                                  c("patent_number", "patent_year", "assignees",
-                                    "applications"))  
+#preparing for further joins
+uspat_join$uspto_fp_number_f_joining <- gsub("U(1)?","", uspat_join$uspto_fp_number_f_joining)
 
-### Setting the fields which need to be queried ###
-fields <- c("patent_number", "patent_year","app_date","app_country","assignee_country")
+#saving the resulting raw file
+saveRDS(uspat_join, "data/uspat_join.RDS")
 
-### This for-loop repeats the for-loop which queries 200 times
-### This is done in order to keep the files to a reasonable size 
-### for the raspberry pi that runs this script to handle 
+#Selecting the relevant rows
+uspat_join %>% select("uspto_us_patent_id","uspto_fp_id", "uspto_fp_category", 
+                      "uspto_sequence","uspto_fp_number_for_query","uspat_valid_pat_id_format",
+                      "uspto_fp_number_f_joining","uspto_application_id","uspto_app_date") %>%     saveRDS(file="data/uspto_join_slim.rds")
 
-for (group in 1:5){
-  print(Sys.time())
-  start <- (group*200)-199
-  end <- (group*200)
-  print(group)
-  
-  ### This for-loop contains the actual query ###
-  
-  for (i in start:end){
-    print(paste0(((i*50)-49),"-",(50*i)))
-    print(paste0("run ", i, " from ", start, "/" ,end))
-    
-    ### This creates the second part of the query ###
-    
-    query <- with_qfuns( # with_qfuns is basically just: with(qry_funs, ...)
-      and(contains(patent_number = as.character(unique_uspto_numbers[((i*50)-49):(50*i)]))
-      )
-      
-    )
-    
-    ### Send request to API's server with the right numbers and fields to query
-    print(system.time({pv_res<- search_pv(query = query, fields = fields,
-                                          all_pages = TRUE)} )) 
-    
-    
-    ### The query returns a list from which only one part is needed
-    
-    relevant_uspto_data_from_query <- pv_res[[1]][[1]]
-    
-    full_uspto_query_data <- rbind(full_uspto_query_data,relevant_uspto_data_from_query)
-    
-  }
-  ### saving the file for each group
-  saveRDS(full_uspto_query_data, file=paste0("uspto_query_data_group_",group,".rds"))
-  
-  
-}
+
+
 ```
-
 
 ### Appendix 1C: German patent data
 
 Additional information on the cited patents/utility models such as the application date and the kind of IP is needed for the analysis. For this the [Open Patent Services API](https://www.epo.org/searching-for-patents/data/web-services/ops.html#tab-1) of the European Patent Office is used. 
-
-Firstly, a character of strings is created
 
 
 ```{r query_OPS, eval=FALSE}
@@ -213,44 +174,420 @@ agg_ops_crawler <- function(group){
   return(ops_data)
 }
 
-```
 
-```{r 3d_graphic}
-require(plotly)
-den3d <- readRDS("den3d_frederic.rds")
 
-names(den3d) <- c("US Patent Year", "German Patent Year", "Relative Density")
-
-fig <- plot_ly(x=den3d$`US Patent Year`, y=den3d$`German Patent Year`, z=den3d$`Relative Density`) %>% add_surface()
-fig <- fig %>% layout(
-  title = "Patent citations over time",
-  scene = list(
-    xaxis = list(title = "US Patent Year"),
-    yaxis = list(title = "German Patent Year"),
-    zaxis = list(title = "Density")
-  ))
-fig
 
 ```
 
+However, because there were some NAs that were not found, the OPS query is slightly adapted to get the information on the rest of the patents:
+
+```{r na_query_OPS, eval=FALSE}
+## This function creates a string of for the patents that were not found in the first OPS search
+
+create_ops_strings_for_na_query <- function(){
+  vector_of_ops_na <- anti_join(uspat_join,full_ops_query_data, by = c("uspto_fp_number_f_joining" = "ops_int_pat_number"))
+  vector_of_ops_na$uspat_valid_pat_id_format_2 <- grepl( "DE[:digit:]{5,8}[:upper:]?[:digit:]?", vector_of_ops_na$uspto_fp_number_for_query)
+  
+  grepl("DE[0-9]{5,8}", "DE123466")
+  
+  vector_of_ops_na[vector_of_ops_na$uspto_fp_number_for_query]
+  
+  vector_of_ops_na[vector_of_ops_na$uspat_valid_pat_id_format=TRUE,]
+  
+  vector_of_ops_na$valid_pat_id <- gsub("U[0-9]?","",vector_of_ops_na$ops_country)
+  #vector_of_ops_na$valid_pat_id <- gsub("[A-Z][0-9]?","",vector_of_ops_na$valid_pat_id)
+  vector_of_ops_na$valid_pat_id <- gsub("\\[0-9]*","",vector_of_ops_na$valid_pat_id)
+  
+  
+  ## check which of the NAs is already in the dataset
+  
+  vector_of_ops_na$ops_int_pat_number <- gsub("[A-Z]","", vector_of_ops_na$valid_pat_id)
+  
+  ## Only keep those which have not been already queried
+  
+  vector_of_ops_na <- anti_join(vector_of_ops_na, full_ops_query_data, by = c("ops_int_pat_number"="ops_int_pat_number"))
+  ##writing all the patent ids into strings for depatisnet crawler###
+  string_for_lookup_pat_id <- c("")
+  for(i in 1:ceiling(nrow(vector_of_ops_na)/80)){
+    if(i!=ceiling(nrow(vector_of_ops_na)/80)){
+      string_for_lookup_pat_id[i] <- toString(vector_of_ops_na$valid_pat_id[((i-1)*80):(i*80)] ) 
+    }else{
+      string_for_lookup_pat_id[i] <- toString(vector_of_ops_na$valid_pat_id[((i-1)*80):nrow(vector_of_ops_na)])
+    }
+    
+  }
+  return(string_for_lookup_pat_id)
+}
 
 
-```{r uspto_crawl_show table, echo=FALSE, eval=FALSE}
-#require(htmlwidgets)
-#require(DiagrammeR)
-#require(DiagrammeRsvg)
-#require(V8)
-#readRDS("data/uspat_foreigncitations_ger.rds")
-#dm_f <- dm_from_data_frames(uspat_foreigncitiations)
-#graph <- dm_create_graph(dm_f, rankdir = "BT", col_attr = c("column", "type"))
-#code <- dm_render_graph(graph)
-#filename <- "test.png"
-#
-#pdf_digraph <- function(filename, code){
-#  capture.output({
-#  g <- grViz(paste("digraph{", code, "}"))
-#  DiagrammeRsvg::export_svg(g) %>% charToRaw %>% rsvg::rsvg_pdf(filename)
-#  },  file='NUL')
-#  knitr::include_graphics(filename)
-#}
+### This is the query function itsself which requires a string as an input
+### It uses the token generated above to send a POST request to the server
+### This xml data is then parsed and the important information is extracted
+
+
+ops_query_for_na <- function(string_for_ops){
+  auth_codes <- readRDS("data/auth.rds")
+  access_token<- auth(auth_codes[1], auth_codes[2])
+  
+  head_post <- c(paste("Bearer", access_token ),"application/exchange+xml", "text/plain")
+  names(head_post) <- c("Authorization", "Accept", "Content-Type" )
+  r_post<- POST("http://ops.epo.org/rest-services/published-data/publication/DOCDB/biblio", 
+                add_headers(head_post), body = string_for_ops)
+  print("string_for_ops")
+  print(paste0("Per hour used: ",as.numeric(r_post$headers$`x-individualquotaperhour-used`)*1e-6))
+  print(paste0("Per week used: ",as.numeric(r_post$headers$`x-registeredquotaperweek-used`)*1e-6))
+  
+  pat=xmlTreeParse(r_post) %>% xmlRoot() %>% .[[1]]
+  
+  return(pat)
+}
+
+#This is the very similar query to the aggregated OPS crawler
+# it just includes more failsafes through the trycatch function
+agg_ops_na_crawler_2 <- function(group){
+  print(group)
+  ### This is the table in which the data will be written
+  
+  ops_data <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
+                       c("country", "int_pat_number", "kind_of_patent", "date"))
+  
+  ### This reads the file which earlier generated all the strings for query 
+  
+  ops_string_for_query <- ops_string_for_na_query
+  
+  ## List of query results
+  
+  list_of_query_results <- vector(mode = "list")
+  
+  ## Creating start and ending points for the for-loop
+  
+  
+  ops_start <- (group*100-99)
+  
+  ops_end <- (group*100)
+  if(ops_end > length(ops_string_for_query)){
+    print("last group")
+    ops_end <- length(ops_string_for_query) -1
+  }
+  
+  print(paste0("Querying from ", ops_start, " to ", ops_end))
+  for (i in ops_start:ops_end){
+    print(paste0(i, "th element in the string"))
+    n <- 1+(i-ops_start)
+    tryCatch(
+      print(system.time(query_results<- ops_query_for_na(ops_string_for_query[i]))),
+      error = function(c) {
+        print("Error message")
+        Sys.sleep(10)
+        system.time(query_results<- ops_query_for_na(ops_string_for_query[i]))
+      },
+      warning = function(c) "warning")
+    #T
+    tryCatch({
+      list_of_query_results[[n]] <- xmlToList(query_results)
+      print(n)
+      df <- xmlSApply(query_results, function(x) {
+        test <- x[["bibliographic-data"]][["publication-reference"]][["document-id"]]
+        xmlSApply(test, xmlValue)})
+      df <- t(df)
+      
+      n.obs <- sapply(df, length)
+      seq.max <- seq_len(max(n.obs))
+      new_data <- t(sapply(df, "[", i = seq.max))
+    }
+      ,
+      error = function(c) {
+        print("Error message")
+        
+        new_data <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
+                             c("country", "int_pat_number", "kind_of_patent", "date"))
+        new_data[1,] <-c("ERROR",i,i,i)
+      },
+      warning = function(c) "warning")
+    
+    
+    
+    colnames(new_data) <-  c("country", "int_pat_number", "kind_of_patent", "date")
+    ops_data<- rbind(ops_data,new_data, fill=TRUE)
+    print(head(new_data))
+    rm(new_data)
+  }
+  list.save(list_of_query_results, file =paste0("data/ops_files/list_of_results_group_na_",group,".rds") )
+  #saveRDS(list_of_query_results, file = paste0("data/ops_files/list_of_results_group_",group,".rds"))
+  saveRDS(ops_data,file=paste0("data/ops_files/ops_data_group_na_",group,".rds"))
+  return(ops_data)
+}
 ```
+
+
+
+### Appendix 1D: Joining all the data
+
+The goal of this step is to bring all the data together to create on table on which the regression and other analyses are based on.
+
+```{r full_join, eval=FALSE}
+##First the OPS data is read
+read_ops_query_files<- function(){
+  i=1
+  ops_query_files <- setNames(data.table(matrix(nrow = 0, ncol = 4)),
+                                    c("ops_country", "ops_int_pat_number", "ops_kind_of_fp",
+                                      "ops_date"))
+  # This goes through the folder in which all OPS files are located in order to load all the OPS query results and rbind  them together
+  
+while ( file.exists(paste0("data/ops_files/ops_data_group_",i,".rds"))){
+    database <- readRDS(paste0("data/ops_files/ops_data_group_",i,".rds"))
+    names(database) <-  c("ops_country", "ops_int_pat_number", "ops_kind_of_fp",
+                          "ops_date")
+    ops_query_files <- rbind(ops_query_files, database, fill=TRUE)
+    print(i)
+    i <- i+1
+    
+}
+  # This does the same for the later queries of earlier NAs
+  i=1
+ while ( file.exists(paste0("data/ops_files/ops_data_group_na_",i,".rds"))){
+    database <- readRDS(paste0("data/ops_files/ops_data_group_na_",i,".rds"))
+    names(database) <-  c("ops_country", "ops_int_pat_number", "ops_kind_of_fp",
+                          "ops_date")
+    ops_query_files <- rbind(ops_query_files, database, fill=TRUE)
+    print(i)
+    i <- i+1
+    
+ }
+  # This makes sure that each entry is unique
+  ops_query_files <- unique(ops_query_files)
+  
+  #This codes every entry as Patent and all the ones that have U in their Publication Number as Utility Models
+  
+  ops_query_files$ops_kind_of_fp_coded <- "Patent"
+  ops_query_files$ops_kind_of_fp_coded[grepl("U[0-9]?",ops_query_files$ops_kind_of_fp)]<- "Utility Model"
+  
+  #ops_query_files$date <- as.Date(ops_query_files$date, format = "%Y%m%d")
+  return(ops_query_files)
+}
+
+## Here all the data is then loaded and joined
+## This function returns one data frame that is then used for the regression
+read_and_join_data <- function(){
+  require(dplyr)
+  require(tidyverse)
+  require(data.table)
+  require(gtools)
+  require(lubridate)
+  require(magrittr)
+#reading the join of the first two data sources on US patents
+uspat_join <- readRDS("data/uspto_join_slim.rds")
+# calling the OPS data reading function
+full_ops_query_data<-read_ops_query_files()
+full_ops_query_data$ops_date <- as.Date(full_ops_query_data$ops_date, format = "%Y%m%d")
+#Sometimes there are multiple patents associated with one patent number. It is not possible to know which patent is meant. 
+#Therefore this takes the mean of the date.
+full_ops_query_data %<>% 
+  group_by(.$ops_int_pat_number,.$ops_kind_of_fp_coded ) %>% 
+  summarise(mean_date_german_patent = mean.Date(ops_date, na.rm=TRUE))
+colnames(full_ops_query_data) <- c("ops_int_pat_number","ops_kind_of_fp_coded","mean_date_german_patent")
+#This joins the data sources together and then calculates the citation time difference
+complete_join_no_na <- inner_join(full_ops_query_data,uspat_join, by = c("ops_int_pat_number"="uspto_fp_number_f_joining"))
+complete_join_no_na$year_difference <- as.numeric(difftime(as.Date(complete_join_no_na$uspto_app_date), as.Date(complete_join_no_na$mean_date_german_patent), units = "days"))/365
+#This deletes all NAs and then adds a few columns that are used in further analysis
+complete_join_no_na <- complete_join_no_na[!is.na(complete_join_no_na$year_difference),]
+complete_join_no_na <- complete_join_no_na[!complete_join_no_na$ops_kind_of_fp_coded=="",]
+complete_join_no_na$year_us_patent <- year(as.Date(complete_join_no_na$uspto_app_date))
+complete_join_no_na$year_german_patent <- year(as.Date(complete_join_no_na$mean_date_german_patent))
+
+complete_join_no_na[complete_join_no_na$uspto_fp_category=="NULL","uspto_fp_category"] <- NA
+complete_join_no_na$uspto_fp_category <- as.factor(complete_join_no_na$uspto_fp_category)
+complete_join_no_na$uspto_cited_by_examiner <- 0
+complete_join_no_na[which(complete_join_no_na$uspto_fp_category=="cited by examiner"),]$uspto_cited_by_examiner <- 1
+return(complete_join_no_na)
+}
+
+```
+
+Now all the data is prepped for the analysis itself. 
+
+### Appendix 1E: Creating a seperate table with additional relevant information for the paper
+
+```{r additional_table, eval=FALSE}
+# This selects the relevant columns
+df <- complete_join_no_na %>% select(uspto_us_patent_id, uspto_fp_number_for_query,uspto_fp_category, ops_kind_of_fp_coded,year_difference, uspto_cited_by_examiner)
+# This section calculates how many citations are after the 10 and 20 year mark
+# For this we first create a matrix with all the relevant german patents or utility models which are cited after 10 years
+vector_cited_after_10<- unique(df[df$year_difference>10,2]) 
+vector_cited_after_10<-  as.data.frame(vector_cited_after_10)
+vector_cited_after_10$value <- TRUE
+colnames(vector_cited_after_10) <- c("uspto_fp_number_for_query","cited_after_10")
+df<- left_join(df, vector_cited_after_10 )
+df[is.na(df$cited_after_10),]$cited_after_10 <- FALSE
+
+vector_cited_after_20<- unique(df[df$year_difference>20,2]) 
+vector_cited_after_20<-  as.data.frame(vector_cited_after_20)
+vector_cited_after_20$value <- TRUE
+colnames(vector_cited_after_20) <- c("uspto_fp_number_for_query","cited_after_20")
+df<- left_join(df, vector_cited_after_20 )
+df[is.na(df$cited_after_20),]$cited_after_20 <- FALSE
+
+#we then  calculate the relative frequency of a citation after the validity deadline for each of the types of IP
+rel_freq_table <- data.frame(row.names = c("Patent", "Utility Model"))
+rel_freq_table[1,1] <- nrow(unique(df[(df$cited_after_20& df$ops_kind_of_fp_coded=="Patent") ,2]))/nrow(unique(df[df$ops_kind_of_fp_coded=="Patent",2]))
+rel_freq_table[2,1] <- nrow(unique(df[(df$cited_after_10& df$ops_kind_of_fp_coded=="Utility Model") ,2]))/nrow(unique(df[df$ops_kind_of_fp_coded=="Utility Model",2]))
+rel_freq_table[1,2] <- nrow(df[(df$year_difference>20 & df$ops_kind_of_fp_coded=="Patent") ,2])/nrow(df[df$ops_kind_of_fp_coded=="Patent",2])
+rel_freq_table[2,2] <- nrow(df[(df$year_difference>10 & df$ops_kind_of_fp_coded=="Utility Model") ,2])/nrow(df[df$ops_kind_of_fp_coded=="Utility Model",2])
+colnames(rel_freq_table) <- c("percent_of_ip_have_a_citation_after_IP_runout","percent_citation_after_IP_runout")
+
+rel_freq_table_examiner <- data.frame(row.names = c("Utiliy model cited by applicants side", "Utility Model cited by examiner"))
+rel_freq_table_examiner[1,1] <- nrow(df[(df$year_difference>10 & df$ops_kind_of_fp_coded=="Utility Model" & df$uspto_cited_by_examiner == 0 ) ,2])/nrow(df[df$ops_kind_of_fp_coded=="Utility Model" & df$uspto_cited_by_examiner == 0,2])
+rel_freq_table_examiner[2,1] <- nrow(df[(df$year_difference>10 & df$ops_kind_of_fp_coded=="Utility Model" & df$uspto_cited_by_examiner == 1 ) ,2])/nrow(df[df$ops_kind_of_fp_coded=="Utility Model" & df$uspto_cited_by_examiner == 1,2])
+
+rm(df)
+## This creates the yearly count (This is unique patents per year!)
+
+df_group_by_year_us <- complete_join_no_na[,c("uspto_us_patent_id","year_us_patent")]  %>% unique()  %>%  
+  group_by(year_us_patent) %>% 
+  summarise(count_us=n()) 
+
+colnames(df_group_by_year_us) <- c("year_us_patent","count_us")
+
+df_group_by_year_fp <- complete_join_no_na[complete_join_no_na$ops_kind_of_fp_coded=="Patent",c("ops_int_pat_number","year_german_patent")] %>% unique() %>% 
+  group_by(year_german_patent) %>% 
+  summarise(count_fp=n())
+colnames(df_group_by_year_fp) <- c("year_german_patent","count_fp")
+
+df_group_by_year_fum <- complete_join_no_na[complete_join_no_na$ops_kind_of_fp_coded=="Utility Model",c("ops_int_pat_number","year_german_patent")] %>% unique() %>% 
+  group_by(year_german_patent) %>% 
+  summarise(count_fum=n())
+
+colnames(df_group_by_year_fum) <- c("year_german_patent","count_fum")
+
+df_group_by_year_german <- full_join(df_group_by_year_fum,df_group_by_year_fp, by=c("year_german_patent"="year_german_patent"))
+
+df_group_by_year_all <- full_join(df_group_by_year_us,df_group_by_year_german, by=c("year_us_patent"="year_german_patent"))
+
+colnames(df_group_by_year_all)  <- c("year", "US patent application", "German utility model registration", "German patent application")
+
+df_group_by_year_all %<>% pivot_longer(cols = c("US patent application", "German patent application", "German utility model registration")) 
+
+df_group_by_year_all[is.na(df_group_by_year_all$value),3]<- 0
+
+```
+
+## Appendix 2:
+
+All the code in this section can also be found in the Rmarkdown file of the paper. After we loaded all the relevant packages we then import all the relevant data in the environment.
+
+```{r first_setup, eval=FALSE}
+#Loading all the required packages
+library(data.table)
+library(magrittr)
+library(dplyr)
+library(tidyverse)
+library(data.table)
+library(gtools)
+library(lubridate)
+library(stargazer)
+library(tinytex)
+library("citr")
+library(ggplot2)
+library("ggsci")
+library(ggthemes)
+library(sandwich)
+```
+Below you will find the code that I use to join the data. In order to make this reproducible I will attach the main data set ("complete_join_no_na") to the email. This can then be imported into R. Additionally, the "99_create_df.R" script that is called below can be found under Appendix 1E so can also be reproduced manually.
+
+``` {r loading_data, eval=FALSE}
+#Importing the functions for joining the data
+source("99_data_joining.R")
+#Running and timing the data joining function 
+system.time(complete_join_no_na<- read_and_join_data() )
+#Removing all the citations with a < -5 years difference
+complete_join_no_na <- complete_join_no_na[complete_join_no_na$year_difference > -5  ,]
+#run the script which creates some summary statistics
+source("99_create_df.R")
+
+```
+After all the data is in the environment it is summarized to give the reader a first glimpse of the data distribution
+
+```{r summary_table_citation_time, eval=FALSE}
+# This creates the summary statistics
+df_stat <- data.frame(complete_join_no_na[,c("ops_kind_of_fp_coded","year_us_patent","year_german_patent", "year_difference")])
+# This codes it as a Dummy variable where 1 is Pantent and 0 is Utility model
+df_stat$ops_kind_of_fp_coded<- as.numeric(as.factor(df_stat$ops_kind_of_fp_coded))
+df_stat[df_stat$ops_kind_of_fp_coded > 1,"ops_kind_of_fp_coded"] <- 0
+colnames(df_stat) <- c("Patent Dummy", "Year of the US patent", "Year of the German Patent", "Year difference")
+# this prints the overview table
+stargazer(df_stat, header=FALSE, font.size = "small", column.sep.width = "1pt")
+```
+
+We then create the first graph:
+
+```{r graph_year_patents, eval=FALSE }
+#This displays the yearly patent (and utility model) applications 
+ggplot(data=df_group_by_year_all, )+ geom_line(aes(x= year  ,y=value, group=name, linetype = name)) + xlim(1920,2020) + 
+  theme_minimal() + labs(x = "Year", y ="Number of applications", group = "Type of IP application" , linetype = "Type of IP application") + scale_linetype_manual(values=c(3,2,1))
+```
+
+In order to create comparability between the two groups, a density plot is used to visualize the distribution of patent citations.
+
+```{r graph_density, eval=FALSE}
+# This is the main density plot which is cut off at 50 years due to some very high numbers which result in a non-readable chart
+
+p <- ggplot(data=complete_join_no_na,  aes(year_difference, group=ops_kind_of_fp_coded, linetype=ops_kind_of_fp_coded)) + geom_density() +xlab("Age of german patent/utility model cited (in years)")+ guides(linetype=guide_legend(title="Type of IP")) +  geom_abline(intercept = -10, show.legend = TRUE, linetype = 2) +geom_abline(intercept = -20 , show.legend = T, linetype = 1) + xlim(-5, 50)+ theme_minimal() + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5)) + labs(title = "Citation time difference")
+
+p
+
+```
+
+Before the regressions are run we run a Breusch-Pagan test to test for linear heteroscedasticity which we then address by using clustered standard errors. We then run the regression
+
+```{r run regressions, eval=FALSE}
+# The next line is used to check if we have heteroscedasticity (the linear kind)
+bptest(reg_type_of_ip, data = complete_join_no_na )
+##Result: We have heteroscedasticity
+
+
+# Here a total of four regressions will be run
+# For each the regression it will first be run and then clustered standard errors are created. The clustering is on the type of ip (so patent or utility model). 
+reg_type_of_ip <- lm(year_difference ~ ops_kind_of_fp_coded,complete_join_no_na)
+cov1         <- vcovHC(reg_type_of_ip, type = "HC1")
+robust_se_1    <- sqrt(diag(cov1))
+
+
+reg_category_type_of_ip <- lm(year_difference ~ uspto_cited_by_examiner + ops_kind_of_fp_coded,complete_join_no_na)
+cov2         <- vcovHC(reg_category_type_of_ip, type = "HC1")
+robust_se_2    <- sqrt(diag(cov2))
+
+
+reg_category_type_of_ip_interaction <- lm(year_difference ~ uspto_cited_by_examiner + uspto_cited_by_examiner *ops_kind_of_fp_coded + ops_kind_of_fp_coded,complete_join_no_na)
+cov3         <- vcovHC(reg_category_type_of_ip_interaction, type = "HC1")
+robust_se_3    <- sqrt(diag(cov3))
+
+reg_category_type_of_ip_year <- lm(year_difference ~ uspto_cited_by_examiner+ uspto_cited_by_examiner*ops_kind_of_fp_coded + ops_kind_of_fp_coded+ year_us_patent,complete_join_no_na)
+cov4         <- vcovHC(reg_category_type_of_ip_year, type = "HC1")
+robust_se_4    <- sqrt(diag(cov4))
+
+
+
+```
+Lastly, the regression outputs are prepared for the knitting with the following stargazer lines:
+```{r output of first regression, eval=FALSE}
+# This stargazer command outputs all of the regression with the corresponding standard errors
+stargazer(reg_type_of_ip,reg_category_type_of_ip,
+          reg_category_type_of_ip_interaction,reg_category_type_of_ip_year, 
+          se = list( robust_se_1,robust_se_2, robust_se_3, robust_se_4),
+          title ="Regression Results",
+          dep.var.labels = c("Time difference"),
+          order = c(5,2,1,4,3),
+          covariate.labels = c("Constant", "Utility model","Cited by Examiner", 
+                               "Cited by Examiner | Utility model","US patent app. year"),
+          align=TRUE,
+          report= "vc*s",
+          type="latex",
+          table.placement = "h!",
+          header=FALSE,
+          omit.stat=c("LL","ser", "F", "rsq","adj.rsq"),
+          no.space=TRUE,
+          column.sep.width = "0.5 pt"
+          )
+
+```
+
