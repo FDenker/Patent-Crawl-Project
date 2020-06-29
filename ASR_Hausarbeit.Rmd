@@ -27,6 +27,7 @@ editor_options:
 ---
 
 ```{r first_setup, include=FALSE}
+#Loading all the required packages
 require(data.table)
 require(magrittr)
 require(dplyr)
@@ -41,26 +42,34 @@ library(ggplot2)
 library("ggsci")
 library(ggthemes)
 require(tinytex)
-#library("lmtest")
+library(sandwich)
+library(miceadds)
+library(RCurl)
 
 
 #Todo
+#Reasearch summary
+
 #Add sector control (US Patent type maybe?)
 # Add NAs siehe anti_join(uspat_join,full_ops_query_data, by = c("uspto_fp_number_f_joining" = "ops_int_pat_number")))
 ```
 
 
 ``` {r loading_data, include=FALSE, cache=TRUE}
+#Importing the functions for joining the data
 source("99_data_joining.R")
+#Running and timing the data joining function
 system.time(complete_join_no_na<- read_and_join_data() )
+#Removing all the citations with a < -5 years difference
+complete_join_no_na <- complete_join_no_na[complete_join_no_na$year_difference > -5  ,]
+#run the script which creates some summary statistics
 source("99_create_df.R")
-#dskljadas
-#todo: NA
+
 ```
 
 ## Research Summary:
 
-## Managerial Summary
+This paper examines the usage of German utility models in contrast to German patents. Theory suggests that utility models are a good patent alternative to secure the property rights to incremental innovation. As incremental innovation protected by utility models loses relevance more quickly, it is expected to be cited earlier than the more radical inventions that are protected by patents. This is validated in this paper, which shows that in American Patent applications utility models are on average cited earlier, both by applicants and by examiners. Additionally, the difference in citation behavior between examiners and the applicants is shown to be reversed for utility models and patents.
 
 ## Keywords
 patent citation, utility models, innovation policy
@@ -69,204 +78,189 @@ patent citation, utility models, innovation policy
 
 ## Introduction
 
-Innovation is accredited with much of the improvements in levels of human welfare. However, in order to make sure that this trend continues, it must be made sure that the incentives to innovate stay strong. Special attention needs to be paid on how government policy can maintain these incentives in times in which the pace of technological and societal change is accelerating (SAUCE).  
+Innovation is accredited with much of the improvements in levels of human welfare [@mokyrLeverRichesTechnological1992]. To make sure that this trend continues, the incentives to innovate must stay strong. As "innovation has always been spurred by governments" [@scotchmerInnovationIncentives2006, p. 3], special attention needs to be paid on how government policy can maintain these incentives. 
 
-This paper will examine one of the mechanism that was first introduced by the German government in 1891: the utility model [@goldsteinIntellectualPropertyAsia2009]. Utility models will be introduced in more detail below TEST . It was soon used as a model legislative structure in countries like Japan, which introduced it into law in 1905 with much of the same conditions as the German one [@goldsteinIntellectualPropertyAsia2009]. In the following years many developing and developed countries have introduced similar legislation (Prud’homme 2014). However, there has been little to none quantitative assessment of the usefulness of these Utility models in contrast to the more studied patents.  
-
-This research is especially relevant as several countries such as the People’s Republic of China have modelled their IP system after the German one without rigorous examinations of its effects (Prud’homme 2014).
-
-
-However, the literature on the real-world usage of these utility models in contrast to the more widespread patents is quite scarce. This paper will use citations in US patent applications as a means to better understand the usefullness of different types of IP after their application.  
+This paper will analyze one mechanism to incentivize innovation that was first introduced by the German government in 1891: the utility model [@goldsteinIntellectualPropertyAsia2009]. It can be seen as a limited version of a patent both in terms of the duration of protection and the costs associated with registering it. It was soon used as a  legislative structure in Japan, which introduced it into law in 1905 with much of the same conditions as the German one [@goldsteinIntellectualPropertyAsia2009]. In the following years, many developing and developed countries have introduced similar legislation [@prudhommeCreatingModelUtility2014]. However, little to none quantitative assessment of the usefulness of these utility models have been conducted which stands in stark contrast to the more rigorously studied patents. 
 
 The research question therefore is:
 
-How do utility models differentiate in their use to traditional patenting?
+**How does the usage of utility models differ in comparison to traditional patents?**
 
+The usage of these two different intellectual property (IP) instruments will be analyzed by regressing the mean citation time on the type of instrument. Before this regression is run, however, the necessary details of the patent and utility model system in Germany and the data sourcing itself will be explained. 
 
+This paper has the goal of being the baseline of analysis both in terms of the descriptive statistics and the unique data set that was built. Further evaluation of the usefulness of these utility models can then build on this base of analysis.
 
 ## Theoretical Background
 
+The only incentive scheme for innovation that was introduced in the last 400 years and the one that is most widely used today is intellectual property [@scotchmerInnovationIncentives2006]. Without IP the gains of creating new knowledge do not necessarily benefit the inventor and there is little incentive to invest in innovation on a large-scale. Therefore, in the absence of IP protection, the incentive of the single entrepreneur is to wait for innovation to happen through the investment of others to then copy it with minimal costs attached. This logic would inherently lead to low investment/innovation levels [@aghionCompetitionInnovationInvertedU2005]. IP such as patents, utility models and trademarks are therefore considered necessary for innovation because they enable the appropriation of the benefits of an investment by those that invested in it when the benefits were still uncertain [@nordhausInventionGrowthWelfare1969]. 
 
-The only incentive scheme for innovation introduced in the last 400 years [@scotchmerInnovationIncentives2006] and the one that is most widely used today is intellectual property (IP). Without IP the benefits of creating new knowledge do not necessarily benefit the inventor and there is little incentive to invest in innovation on a large-scale. Therefore, the incentive of the single entrepreneur is to wait for innovation to happen through the investment of others in order to then copy it with minimal costs attached. This logic would inherently lead to low investment / innovation levels [@aghionCompetitionInnovationInvertedU2005] and a situation comparable to the dominant strategy in a prisoners dilemma. IP such as patents or trademarks are therefore necessary because they enable the appropriation of the benefits of an investment by those that invested in it when the benefits were still uncertain. 
+In the US, Patents give inventors the "*right to sue for infringement anyone who makes, uses, sells, or offers the invention in the country where the patent has been issued, or imports or offers to import the invention into that country*" (35 U.S.C. § 194). Near-identical law applies in Germany. While this gives the inventors the possibility to monetize the fruits of his investment, it also creates inefficiencies in the form of deadweight loss due to the use of monopolistic power for the duration of the patent protection rights. Therefore, it is essential to balance the incentive with the negative impact of deadweight loss [@nordhausInventionGrowthWelfare1969]. 
 
-A substantial amount of research has been conducted about the theoretical implications of the patent system (Scotchmer, 2004), there is, however, a glaring lack of quantitative research that comparatively evaluates the actual performance of different IP mechanisms. The goal of the paper is to address this gap in research by using the “revealed preferences” of hundreds of thousands of different inventors by analyzing patent applications. This paper specifically uses citations used in American patents applications (of foreign IP) to better understand the usefulness of different types of IP. American patent applications were used as a starting point due to data availability reasons and the high amount of basic research on the US Patent system.
+William Nordhaus was able to show that there exists such a thing as the equilibrium IP length which minimizes deadweight loss and therefore maximizes the welfare for all [-@nordhausInventionGrowthWelfare1969]. However, applicants of IP have incentives not to reveal the true value and costs of the invention. For example, if a firm develops an invention which costs significantly less than normal they should ideally only a more limited protection time. Therefore, the firm then has the incentive to keep the cost secret in order to get longer protection than warranted. This means that the true cost or the true value of inventions would be needed to determine the correct length of protection for the invention. One of the ways which can help policymakers tackle this information asymmetry is to allow for differentiation in the IP instruments. The idea is that the applicant selects the IP instrument which fits the invention and therefore reveals the true value of the invention (at least the true value according to the applicant). 
 
-However, while US patent citations are the base of analysis, the focus of this paper itsself will be on a specific differentiation of the German patent system that is not present in the US but that shows in the frequency and timing of citations to German IP in American patent applications. The specialities of the patenting system in Germany that lend itsself for a deeper analysis of the value created through IP is duality of the patenting and utility model system. As mentioned previously, utility models work similarly as a patent in most aspects, but differentiate themselves in some of the details: they are only valid for up to 10 years (in contrast to patents, which are valid up to 20 years) and there are not applied for, but simply registered [@koniger125ThAnniversary2016]. Therefore, utility models are not examined by an official of the German Patent and Trademark office before they are published. This gives them less validity in court, but ideally speeds up the process from ideation to registered IP while minimizing the costs. It therefore seems intuitive that these types of IP are usefull in two cases: When innovation is incremental a utility model can be used to save money and if the pace of technological innovation is increasing it might be handy to use utility models to quickly expand the IP portfolio^[Especially as utility model applications count as priority filing dates.] [@koniger125ThAnniversary2016].
+While the theory speaks for IP differentiation and a substantial amount of research has been conducted about the theoretical implications of the patent system [@scotchmerInnovationIncentives2006], there is, however, a glaring lack of quantitative research that comparatively evaluates the actual performance of different IP mechanisms. The goal of this paper is to address the gap in research using the revealed preferences of hundreds of thousands of different inventors by analyzing patent applications. This paper specifically makes use of citations in American^[American patent applications are the starting point of analysis due to data availability reasons and the high amount of basic research on the US Patent system. More detail regarding the data selection process will be given in the "Data and Methods" section of the paper.] patents applications of German IP to better understand the value of different types of IP.
 
+### Patent citations as a measurement
 
-Having established that intellectual property protection is important, this paper will now evaluate the effectiveness of utility models vs patents. 
+A patent citations means that either the applicant or the examiner believed that the cited patent has relevance for citing patent application. Patent citations are very common objects of quantitative analysis and are used for measuring technological quality, diffusion of information and many other innovation metrics [@karkiPatentCitationAnalysis1997]. The important information that is used in the context of this analysis is that when a patent applications cites prior art (patent language for relevant earlier IP), it indicates that the patent/utility model still have relevance. This may sound obvious to the reader, it is however, an assumption.
 
-Patents give the inventor the monopoly right to sue for infringement other companies that are violating the IP^[Or to be precise: Patents give inventors (in the US, but near identical law applies in Germany) the "*right to sue for infringement anyone who makes, uses, sells, or offers the invention in the country where the patent has been issued, or imports or offers to import the invention into that country*" (35 U.S.C. § 194)]. While this gives the inventors the possibility monetize the fruits of his investment, it also creates inefficiencies in the form of deadweight loss due to the use of monopolistic power. It is, therefore, essential to balance the incentive with the negative impact of deadweight loss [@nordhausInventionGrowthWelfare1969]. 
+The value that is observed for this paper is the difference in years between the American patent application and the German patent/utility model application which will be called citation time in this paper. Below you will find a visual representation of this citation time: 
+```{r old-figure-label, echo = FALSE, message=FALSE, fig.align='center', fig.cap='Citation time concept visualization', out.width='0.95\\linewidth', fig.pos='H'}
+knitr::include_graphics("data/citation_time.png")
+```
 
-Nordhaus shows that there exists such a thing as the equilibrium IP length which minimizes deadweight loss and therefore maximizes the welfare for all [@nordhausInventionGrowthWelfare1969]. However, applicants of IP have incentives to not reveal the true value and costs of the invention. These informations are, however, needed to determine the correct length of protection for the invention. One of the ways which can help policymakers tackle this problem is to allow for differentiation in the IP instruments with the goal to get the applicant to reveal the true value of the invention (at least the true value according to the applicant). 
+While US patent citations times are the base of analysis, the focus of this paper itself will be on the specific usage of utility models within the German patent system by examining the frequency and timing of citations to German IP in American patent applications. Therefore, to evaluate the effectiveness of utility models we make use of the duality of the German patenting and utility model system. 
 
+### What are utility models and why are they different?
 
-## What are utility models and why are they different?
+As mentioned previously, utility models work similarly as a patent in most aspects, but differentiate themselves in some of the details: they are only valid for up to 10 years (in contrast to patents, which are valid for up to 20 years) and they are not applied for, but simply registered [@koniger125thAnniversaryGerman2016]. Therefore, utility models are not examined by an official of the German Patent and Trademark office before they are published. This gives them less validity in court, but ideally speeds up the process from ideation to registered IP while minimizing the costs. As a consequence, Beneito suggests, that firms use utility models for incremental innovation while using traditional patents for radical innovation [-@beneitoInnovativePerformanceInHouse2006].
 
-Here utility models come into play which give similar but more limited rights as a patent. As mentioned in the introduction, they are only valid for 10 and not 20 years and are not examined by an official of the German Patent and Trademark office. Due to this, it is expected that firms decide to use utility models for incremental innovation while using traditional patents for radical innovation [@beneitoInnovativePerformanceInhouse2006].
+Due to its limited protection duration, one would therefore assume that citations of utility models drop off sharply after the 10-year mark. This is because one would reason that applicants only chose to register utility models when they expect their invention to not be relevant for a period longer than 10 years. This is because after these 10 years they do not receive any revenue from licensing the invention, something they would receive with a patent due to the longer protection period. Utility models that are cited after they become invalid fall into one of two categories: The first case, and the one that will be assumed to be the most common, is that the original inventor did not use the correct type of IP as the invention seems to be still relevant. This means that the invention seems to still have a significant value which is the underlying reason for citing it, but that an IP was chosen that no longer gives the inventor the right to sue for infringement. As a consequence and as explained above, the inventor is losing out on potential licensing revenue. The second case is that patents and utility models are cited which are no longer relevant, but that the applicant believed that citing it would benefit the patent application. The second case will be addressed by including an entry on who added this citation to the US patent application in the analysis. 
 
-One way to measure this is by examining patent citations. A patent citations means that either the applicant or the examiner believed that the cited patent which becomes "prior art" has relevance for citing patent application. Patent citations are  very common objects of quantitative analysis due to a number of reasons discussed below and are used for measuring technological quality, diffusion of information and many other innovation metrics [@karkiPatentCitationAnalysis1997]. The important information that is used in the context of this analysis is that when a patent applications cites prior art, it indicates that the patent / utility model still have relevance. This may sound obvious to the reader, it is however, an assumption. 
-
-
-Coming back to the utility models, on would therefore assume that citations of utility models drop off sharply after the 10 year mark. Utility models that are cited after they become invalid fall into a one of three categories: The first case, and the one that will be assumed to be the most common, is that the original inventor did not use the correct type of IP as the invention seems to be still relevant. The second case is that patatents and utility models are cited which are no longer relevant, but the applicant was the opinion that citing it would benefit the patent application (CHANGE THIS SENTENCE). Lastly, there is a third case which can lead to later citations: uncertainty. (HIER NOCH WAS )
-
-will be shown to not drive the citations after ten year. This is the  under the assumption of perfect information of the values of an invention  one should protect its invention through a patent. However, this, of course, is a strong assumption and the more realistic case is that citations to utility models after ten years are also not unlikely. One would still assume, however, that citations of utility models drop off significantly earlier than citations of patents (most probably after 10 years)  
-
-Furthermore, the literature on patent citations also brings up the hypothesis that examiners often cite older patent in their examination of the patent than the applicants themselves [@jaffeKnowledgeSpilloversPatent2000]. This too will be tested in this paper and will be combined with the earlier question on the predicitive power of different types of IP for the mean citiation time.
+From this theory framework, several hypotheses are inferred: Hypothesis 1 states that *the mean citation time of utility models is significantly shorter than of patents*. This is the main hypothesis of this paper, however, there are two nuances referring to the difference in citation behavior between the applicants and the examiners which will also be tested. The hypothesis 2a is extracted from the literature on patent citations which states that examiners often cite older patent in their examination than the applicants themselves [@jaffeKnowledgeSpilloversPatent2000]. The hypothesis 2a is therefore that *examiners cite older patents than the applicants' side*. For the hypothesis 2b, which looks at utility models, this is reversed as it is expected that examiners do not cite the less relevant older utility models (in contrast to the applicants). Therefore, hypothesis 2b is that *examiners cite more recent utility models*. A reverse in the citation time difference is hypothesized, because one would not expect examiners to cite utility models beyond their validity. Applicants and their lawyers would do so to validate their application.  
 
 ## Data and Methods
 
 ### Description of data sources
 
-Due to the niche nature of this topic, no adequate completed dataset is publically available. Therefore the data was sourced from three different sources^[These sources and their merging will be explained in detail in the appendix 1.] and then joined:
+Due to the niche nature of this topic, no adequate completed data set is publicly available. Therefore the data was sourced from three different sources^[These sources and their merging will be explained in detail in the appendix 1.] and then joined:
 
-Firstly, data on which US patents cited which German patents/utility models can be retrieved from the ["Patentsview additional download page"](https://www.patentsview.org/download/). On the same webpage information on these US patents can be retrieved.
+Firstly, data on which US patents cited which German patents/utility models can be retrieved from the US Patent and Trademark Office (USPTO) [Patentsview service](https://www.patentsview.org/download/). On the same web page information on these US patents can be retrieved which is then merged.
 
-Additional information on the cited German patents/utility models such as the application date and the kind of IP is needed for the analysis. For this the [Open Patent Services API](https://www.epo.org/searching-for-patents/data/web-services/ops.html#tab-1) of the European Patent Office was used. 
+Additional information on the cited German patents/utility models such as the application date and the kind of IP is needed for the analysis. For this, the [Open Patent Services API](https://www.epo.org/searching-for-patents/data/web-services/ops.html#tab-1) of the European Patent Office was used. 
 
-The advantage of patent data is that every entry in the dataset (at least the patents) was carefully examined by Patent Office Officials which leads to a very high internal validity of the later analyses (SAUCE). Additionally, in  order to create the highest level of external validity possible, all citations on American patents from 1976 (the start of the full text database of the USPTO) until the end of 2019 were included in the analysis. This gives the analysis the unique opportunity to (at least for the last forty years) have a complete picture of the actual patenting processing. There are of 
+The advantage of patent data is that every entry in the data set (at least the patents) was carefully examined by Patent Office officials which should lead to a very high internal validity of the later analyses. Additionally, to create the highest level of external validity possible, all citations since the start of the full-text database of the USPTO in 1976 until the end of 2019 were included in the analysis. The data set therefore gives a complete picture of the actual patenting processing for more than 40 years. This unusually high amount of data availability for US patent applications was also the reason for choosing US data as a starting point. This still means that subject of analysis are the German patents and utility models, however, the citation behavior manifests itself in citations from US patent applications for which data was publicly available.
 
-In total `r length(unique(complete_join_no_na$uspto_us_patent_id))` American patents citing `r length(unique(complete_join_no_na$ops_int_pat_number)) #941241` German patents/utility models are in the dataset. Due to the fact that the citations have an m:n relationship, a total of `r length(complete_join_no_na$ops_int_pat_number)` citations are the basis for further analyses. There was a total of XXXX patents for which information was not publically available.
+In total `r  format(length(unique(complete_join_no_na$uspto_us_patent_id)), digits=6, decimal.mark=",",  big.mark=",",small.mark=".", , small.interval=3)` American patents citing `r format(length(unique(complete_join_no_na$ops_int_pat_number)), digits=6, decimal.mark=",",  big.mark=",",small.mark=".", , small.interval=3) #941241` German patents/utility models are in the data set. Since the citations have an m:n relationship, a total of `r format(length(complete_join_no_na$ops_int_pat_number), digits=6, decimal.mark=",", big.mark=",",small.mark=".", , small.interval=3)` citations are the basis for further analyses. There was a relatively small number of patents/utility model for which no detailed information could be found. If further research is done on this data set, this should be amended by manual edits to the data set. These were not done for this paper as that would be beyond the scope of this paper.
 
 ### Operationalization
 
-The final dataset represents a n:m table for which the year difference between the American patent application date and the German patent/utility model patent publication date is calculated. It is important to note that while most year differences are positive - meaning that the German patent was published before the American was applied for - some can be negative. This is a result of rare cases in which a patent application cites a German patent that was not yet published.
+The final data set represents an m:n table for which the year difference between the American patent application date and the German patent/utility model patent publication date is calculated and added to the data set. It is important to note that while most year differences are positive - meaning that the German patent was published before the American was applied for - some can be negative. This is a result of rare cases in which a patent application cite a German patent that was not yet published. However, due to errors in the USPTO database, there are several "false" citations which leads to a small number of citation times being highly negative. Due to the scope of the paper, these cases cannot be checked individually. However, a spot check indicates that most of the patents with more than 5 years negative time difference seem to be errors. Therefore, all the patent citations times smaller than - 5 will be excluded from further analysis.
 
-Additionally, data on who added the patent citation (applicant, examiner or others) to the application and which kind of IP was cited is also part of the dataset and will be used in the analysis
+Additionally, data on who added the patent citation (applicant, examiner or others) to the application is also part of the data set and will be used in the analysis. For the analysis, the relevant variable will be whether the citation was added to the application by US Patent Office examiners or the applicant side which includes the applicant, the lawyers and others. The last variable that will be used as a control variable in the analysis is the application year of the American patent.
 
+### Research approach:
 
-### Research approach
-
-Firstly an overview over the data will be provided in the form of a summary table and two distributional graphs. In order to be able to address the research question and the hypothesis more analytically, a number of regressions will be presented. The regressions will include a number of common controls for patent citation analysis which should show "stability" of the estimator with more independent variables.
+Firstly, an overview of the data will be provided in the form of a summary table and two distributional graphs. To be able to address the research question and the hypothesis with statistical analysis, a total of four regressions will be presented. The regressions will be multivariate linear regressions which should show the change in the mean citation time associated with the IP type. There will also be a gradual inclusion of the control variables mentioned above to show the stability of the estimators in the face of additional controls.
 
 ## Results
 
 ### Descriptive statistics
 
-Starting with the descriptive statistics, a summary table of the main variables is presented below. Firstly, it important to aknowledge that there is a much higher number of patent citation (~95 %) that are cited than utility model citations (~5 %). This is best seen when looking at the mean of the "Patent Dummy". While this partly mirrors the higher amount of patent applications than utility model applications, the descrepancy in the relationship is a lot higher for the number of citations (HIER NOCH DATEN DAZUHOLEN?).
+Starting with the descriptive statistics, a summary table of the main variables is presented below:
 
 
-```{r summary_table_citation_time, echo=FALSE , results='asis', fig.width=8,fig.height=5}
-
+```{r summary_table_citation_time, echo=FALSE , results='asis', fig.width=8,fig.height=5 }
+# This creates the summary statistics
 df_stat <- data.frame(complete_join_no_na[,c("ops_kind_of_fp_coded","year_us_patent","year_german_patent", "year_difference")])
+# This codes it as a Dummy variable where 1 is Patent and 0 is Utility model
 df_stat$ops_kind_of_fp_coded<- as.numeric(as.factor(df_stat$ops_kind_of_fp_coded))
-df_stat$ops_kind_of_fp_coded[2] <- 0
-colnames(df_stat) <- c("Patent Dummy", "Year of the US patent", "Year of the German Patent", "Year difference")
-
-stargazer(df_stat, header=FALSE, font.size = "small")
-
-#stargazer(complete_join_no_na, header=FALSE, font.size = "small", column.sep.width = "-1pt")
-```
-
-Furthermore, in order vizualize the distribution of this graphic shows the distribution of the associated years for both American and German patents^[It is important to note that the summary table is based on the n:m table which means that the US patents and the German IPs can be counted multiple times. This is not the case for the graph which counts every IP only once].
-```{r graph_year_patents, echo=FALSE, fig.width=8,fig.height=5}
-ggplot(data=df_group_by_year_all, )+ geom_line(aes(x=year, y=value, group=name, linetype = name)) + xlim(1920,2020) + 
-  theme_minimal()
-#These are the patents applied for in each year
+df_stat[df_stat$ops_kind_of_fp_coded > 1,"ops_kind_of_fp_coded"] <- 0
+colnames(df_stat) <- c("Patent Dummy", "Year of US app.", "Year of German app.", "Year difference")
+# this prints the overview table
+stargazer(df_stat, header=FALSE, font.size = "small", column.sep.width = "1pt")
 ```
 
 
-Lastly, in order to create comparability between the two groups, a density plot is used to visualize the distribution of patent citations.
+As seen in the Patent dummy mean, patent citations are much more frequent (~91 %) than citations of utility models (~9 %). While this partly mirrors the higher amount of patent applications than utility model applications at the German Patent Office, the discrepancy in the relationship is significantly higher for the number of citations. This can be explained as utility models should be used exclusively for incremental innovation which is then less likely to be cited at all.
 
-```{r graph_density, echo=FALSE, fig.width=8,fig.height=5}
-p <- ggplot(data=complete_join_no_na,  aes(year_difference, group=ops_kind_of_fp_coded, linetype=ops_kind_of_fp_coded)) + geom_density() +xlab("Age of german patent/utility model cited (in years)")+ guides(linetype=guide_legend(title="Type of IP")) +  geom_abline(intercept = -10, show.legend = TRUE, linetype = 2) +geom_abline(intercept = -20 , show.legend = T, linetype = 1) + xlim(-10, 50)+ theme_minimal() + theme(legend.title = element_blank(),plot.title = element_text(hjust = 0.5)) + labs(title = "SET TITLE")
+Furthermore, to better visualize the distribution of the IP applications, Figure 2 shows the distribution of the associated years for both American and German IP^[It is important to note that the summary table is based on the n:m table which means that the US patents and the German IP can be counted multiple times. This is not the case for the graph which counts every IP only once].
+
+```{r graph_year_patents, echo=FALSE, warning=FALSE,fig.cap='Number of applications per year per IP type', fig.width=7,fig.height=3,out.width='0.95\\linewidth', fig.pos='H' }
+#This displays the yearly patent (and utility model) applications 
+ggplot(data=df_group_by_year_all, )+ geom_line(aes(x= year  ,y=value, group=name, linetype = name)) + xlim(1920,2020) + 
+  theme_minimal() + labs(x = "Year", y ="Number of applications", group = "Type of IP application" , linetype = "Type of IP application") + scale_linetype_manual(values=c(3,2,1))
+```
 
 
-#ggplot(data=complete_join_no_na,  aes(year_difference, group=ops_kind_of_fp_coded, colour=ops_kind_of_fp_coded)) + stat_ecdf(geom = "step", pad = FALSE) + xlim(-5, 50)
+Lastly, to create comparability between the two groups, a density plot is used to visualize the distribution of patent citations. The dotted line represents the end of the utility model protection and the solid line shows the end of the patent protection:
 
-#p$labels$colour <- "New legend title"
+
+```{r graph_density, echo=FALSE, warning=FALSE, fig.cap='Density plot of the citation time difference', fig.width=7,fig.height=4,out.width='0.95\\linewidth', fig.pos='H'}
+# This is the main density plot which is cut off at 50 years due to some very high numbers which result in a non-readable chart
+
+p <- ggplot(data=complete_join_no_na,  aes(year_difference, group=ops_kind_of_fp_coded, linetype=ops_kind_of_fp_coded)) + geom_density() + ylab("Relative density")+ xlab("Age of German patent/utility model cited (in years)")+ guides(linetype=guide_legend(title="Type of IP")) +  geom_abline(intercept = -10, show.legend = TRUE, linetype = 2) +geom_abline(intercept = -20 , show.legend = T, linetype = 1) + xlim(-5, 50)+ theme_minimal() + labs(title = "Citation time difference", linetype = "Type of IP cited")
+
 p
 
 ```
 
-This shows that the relative proportion of utility models and patents cited by US patents. The most important finding is that the utility model curve has a higher Kurtosis and seems to have a smaller age average. 
-However, what is surprising is that utility models are relatively more cited both at the 10 and 20 year mark. This is confirmed by the fact that only `r round(rel_freq_table[1,2]*100)`% of the patent citations are after the patents expiration while `r round(rel_freq_table[2,2]*100)`% of the utility model citations are after their expiration.
+Figure 3 shows the distribution of citations for both utility models and patents. As expected, the utility model distribution has have a higher peak and a smaller average. Surprisingly, utility models are relatively more cited both at the 10 and even 15-year mark. This is confirmed by the fact that only `r round(rel_freq_table[1,2]*100)`% of the patent citations are made after the patent's expiration while `r round(rel_freq_table[2,2]*100)`% of the utility model citations are after their expiration. It becomes clear that a relatively high share of utility models are cited later then one would expect. This, as mentioned previously, indicates that utility models are not exclusively being used for incremental innovation.
 
+To make these findings testable four regressions will be run. Due to clear heteroscedasticity in the model (see appendix), the regressions will be run with clustered standard errors. The results can be seen in the $Table~2$ below:  
+```{r run regressions, results='hide', cache=TRUE, echo=FALSE}
 
-These graphical findings can be confirmed by evaluating the regression results of the $Table~2$ below:  
-```{r run regressions, results='hide', echo=FALSE}
-#runing the first stage
-
-
-#complete_join_no_na[complete_join_no_na$uspto_fp_category=="NULL","uspto_fp_category"] <- NA
-#complete_join_no_na$uspto_fp_category <- as.factor(complete_join_no_na$uspto_fp_category)
-#complete_join_no_na$ops_kind_of_fp_coded <- as.factor(complete_join_no_na$ops_kind_of_fp_coded)
-
-
-reg_type_of_ip <- lm(year_difference ~ ops_kind_of_fp_coded,complete_join_no_na)
-#plot(reg_type_of_ip)
-
+# The next line is used to check if we have heteroscedasticity (the linear kind)
 #bptest(reg_type_of_ip, ~ ops_kind_of_fp_coded, data = complete_join_no_na )
-##We have heteroscedasticity
+##Result: We have heteroscedasticity
+
+# Here a total of four regressions will be run
+# For each the regression it will first be run and then clustered standard errors are created. The clustering is on the type of ip (so patent or utility model). 
+reg_type_of_ip <- lm(year_difference ~ ops_kind_of_fp_coded,complete_join_no_na)
+cov1         <- vcovHC(reg_type_of_ip, type = "HC1")
+robust_se_1    <- sqrt(diag(cov1))
 
 
 reg_category_type_of_ip <- lm(year_difference ~ uspto_cited_by_examiner + ops_kind_of_fp_coded,complete_join_no_na)
-reg_category_type_of_ip_innteraction <- lm(year_difference ~ uspto_cited_by_examiner + uspto_cited_by_examiner *ops_kind_of_fp_coded + ops_kind_of_fp_coded,complete_join_no_na)
+cov2         <- vcovHC(reg_category_type_of_ip, type = "HC1")
+robust_se_2    <- sqrt(diag(cov2))
+
+
+reg_category_type_of_ip_interaction <- lm(year_difference ~ uspto_cited_by_examiner + uspto_cited_by_examiner *ops_kind_of_fp_coded + ops_kind_of_fp_coded,complete_join_no_na)
+cov3         <- vcovHC(reg_category_type_of_ip_interaction, type = "HC1")
+robust_se_3    <- sqrt(diag(cov3))
 
 reg_category_type_of_ip_year <- lm(year_difference ~ uspto_cited_by_examiner+ uspto_cited_by_examiner*ops_kind_of_fp_coded + ops_kind_of_fp_coded+ year_us_patent,complete_join_no_na)
+cov4         <- vcovHC(reg_category_type_of_ip_year, type = "HC1")
+robust_se_4    <- sqrt(diag(cov4))
+
 
 
 ```
 
 ```{r output of first regression, results='asis', header=FALSE, message=FALSE, echo=FALSE, fig.width=8,fig.height=5}
-stargazer(reg_type_of_ip, reg_category_type_of_ip,reg_category_type_of_ip_innteraction, reg_category_type_of_ip_year,
-title ="Regression Results",
+# This stargazer command outputs all of the regression with the corresponding standard errors
+stargazer(reg_type_of_ip,reg_category_type_of_ip,
+          reg_category_type_of_ip_interaction,reg_category_type_of_ip_year, 
+          se = list( robust_se_1,robust_se_2, robust_se_3, robust_se_4),
+          title ="Regression Results",
           dep.var.labels = c("Time difference"),
           order = c(5,2,1,4,3),
-          covariate.labels = c("Constant", "Utility model","Cited by Examiner", 
-                               "Cited by Examiner | Utility Model","US patent app. year" ),
+          covariate.labels = c("Constant", "Utility model","Examiner", 
+                               "Examiner | Utility model","US patent app. year"),
           align=TRUE,
           report= "vc*s",
           type="latex",
           table.placement = "h!",
           header=FALSE,
           omit.stat=c("LL","ser", "F", "rsq","adj.rsq"),
-          no.space=TRUE)
-
-
-#
+          no.space=TRUE,
+          column.sep.width = "0.5 pt"
+          )
 
 ```
-For these regressions,a Breusch-Pagan test of linear heteroscedasticity showed clear heteroscedasticity in the model (See appendix XXXX). Therefore, the regressions will be run with clustered standard errors. 
+Before interpreting the estimated parameters in detail, it is important to note that all estimators are statistically significant at the 99 % significance level. Additionally, for all of these regressions, the NAs were excluded from the analysis and all the interpretations will be ceteris paribus interpretations.
 
-This regression serves as a statistical confirmation that Utility Models are on average ceteris paribus cited earlier than Patents. This can be seen as a hint that utility models are used for incremental innovation that becomes less useful earlier on. 
 
-Furthermore, the third regression give some more insight into what examiners and applicants cite^[In this regression, NAs and some of the categories were excluded from the analysis as they are not relevant for this analysis.]. As the goal to examine the actual decisionmaking by the entrepreneurs a focus lies on the citations by the applicant although the citations be the examiner are also a good indicator of the so called prior art. Moreover, this table gives us the first indication that citations made by examiners actually on average refer to earlier prior art for patents. This effect seems to be reversed for utility models where Examiners on average cite older prior art then the applicants. 
+The first regression shows that utility models are on average cited 2.8 years earlier than patents which are on average cited after 13.85 years. This can be seen as a hint that utility models are used for more incremental innovation that becomes less useful at an earlier date. This confirms our hypothesis 1 and shows that the direction of the effect of utility models is as expected. We can also validate that this effect is not driven by a difference in the propensity of examiners who cite older work, as the second regression shows the estimate of the parameter to be very similar. However, even with this shorter mean citation time, the utility models citation time is on average higher than the 10 years they are valid for.
 
-For further information, there is a range of literature that examines the different citation behavior of applicants and examiners (SAUCE). 
+Looking at the second and third regression, we get some insights into what examiners and applicants cite. The third regression includes an interaction term of the dummy-variables $Cited~by~Examiner$ and $Utility~model$.
+There are three important indications in these two regressions:
+Firstly, as also shown in the second regression, citations made by examiners on average refer to later prior art. The third Regression shows that this is mainly the effect on patents. This means that we can reject the $H_0$ of the hypothesis 2a. This is a clear indication that utility models are cited significantly earlier than patents.
+The difference in citations times are reversed for utility models where examiners on average cite earlier prior art than the applicants. We can therefore also reject the $H_0$ of the hypothesis 2b. The direction of the effect of examiners citing utility is the opposite of examiners citing patents. In numbers, this means that utility models cited by examiners are cited on average after 9.85 years which is less than the 10-year validity. On the other hand utility models cited by applicants (or lawyers) are on average ceteris paribus cited after 11.13 years, which is after the 10-year validity deadline. By rejecting the third $H_0$ we have the difficulty of distinguishing between the original applicant of the utility model using the wrong type of IP and the US patent applicant citing non-relevant prior art. However, this is not such a significant problem as it might seem because even the citation mean of examiner citations is very close to the 10-year mark (9.84). This indicates that even when evaluating examiner citations the inadequate type of IP was chosen. This argument can be supported by comparing the proportion of utility models cited by examiners after the 10-year deadline which is `r round(rel_freq_table_examiner[2,1]*100)`% with the proportion of utility models cited by the applicants side after the 10-year deadline (`r round(rel_freq_table_examiner[1,1]*100)`%).
 
-One important aspect that was mentioned in the
+
+Lastly, the fourth regression includes the US patent application year as a control variable. This results in changes to most of the estimated parameters. The constant itself loses the economic significance, however, the changes in the other variables are interpretable: Controlling for the year of the US patent application results in a higher decline of the average citation time for utility models by applicants themselves. It further leads to a smaller increase in the mean citation time of patents cited by examiners. Lastly, including the control is associated with a lower citation time difference of utility models cited by examiners. Although there are changes to the estimated parameters, it is still clear that the general direction does not change when including this as a control variable.
+
 
 
 ## Conclusion
 
-This paper was able to demonstrate two key aspects of the utility model system. Firstly, usage of utility models is not limited to innovation that is used 
+The goal of this paper was to examine the usage of utility models in comparison to patents in order to better offer a baseline assessment of the usefulness of utility model laws. In addition to the demonstration that utility models are (as expected) cited earlier which this paper argues to be the case to due to their use for incremental innovation, it also illustrates two further key aspects of the utility model system. Firstly, the usage of utility models is not limited to incremental innovation/inventions which are only useful in the near future. This shows that the laws governing utility models might need to be adapted as it currently leads to relatively high rates of misspecified inventions. Secondly, this paper was able to show the difference in direction of the "examiner effect" in which examiners cite later patents but earlier utility models which supports the arguments of the inadequacy of the utility model system. We can therefore argue that in the face of the broad adoption of this system more rigorous analysis should have been conducted. However, in the past analyses like these were significantly more laborious due to lower data availability.
 
-### Shortcomings
+While summarizing these results it is important to acknowledge the shortcomings. One of the limitations is that all the patents/utility models included in the data set had to be cited by a US patent application. This is a relatively high barrier and one could argue that this leads to a selection bias towards IPs with higher relevance. This would mean that for the general population of utility models, this analysis is overestimating the effect. To address this problem, one would need data on utility model citation which has a lower barrier. One of the ways to achieve this would be using European or even just German citation data. However, this data is, in comparison to the US citation data, not publicly available. But even though there are shortcomings this paper was still able to show clear differences in the usage and establish a data set on these patent citations.
 
-One important limitation of the data selection is the fact that all the patents/utility models included in the dataset had to be cited by an US patent application. This is a relativly high barrier and one could argue that this leads to a selection bias towards IPs with higher relevance. This would mean that for the general population of utility models, this analysis is overestimating the effect. In order to address this problem one would need data on utility model citation which has a lower barrier. One of the ways to achieve this would be using European or even just German citation data. However, this is beyond the scope of this paper which aimed to look at citations from US patents only.
-
-
-This paper attemted to shine a light on the usage of utility models. Besides the previously mentioned potential problems of a selection bias it was able to show that IPs 
-
-# Other stuff
-
-Patent citations can e seen as a noisy signal of spillovers [jaffe2000] Often the spillover score is higher if the cited patent is more recent 
-
-older citations were more often added by the lawyer or examiner - Hypothesis[jaffe2000]
-
-clustering of patents by their citation time - more cited patents are also cited earlier[jaffe2000]
-
-include technology field and grant year dummy[jaffe2000]
-
-The importance of patenting is much discussed in literatureOne of the most discussed questions of economics are the determinants of growth 
-innovation drives growth
-Intellectual property protection is important
-
-### Why is intellectual property protection important? -> Lead to industrial revolution
-Patent citation analyses are common in the literature on the design of 
-While much of the attention in recent years has been on Non-patent-literature
-
+Lastly, while it was mentioned in the introduction that many countries adopted utility model systems, some of these countries have also abolished them. Examples for this are the Netherlands and Belgium, which abolished their utility models systems (or equivalent "petite patent" system) in 2008 and 2009 respectably [@prudhommeCreatingModelUtility2014]. This serves as a confirmation that the utility model system, while theoretically sound, might need additional calibration in terms of the length of protection. Additionally, this paper has not addressed one of the major points of criticism of utility models: the legal uncertainty that stems from the nature of its registration procedure which does not include any specific checks. For both of these factors, future research leveraging the distinctions of different utility model systems could give some insights into which system works best.
 
 
 
